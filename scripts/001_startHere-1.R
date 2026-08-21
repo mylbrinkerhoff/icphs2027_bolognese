@@ -1,8 +1,8 @@
 #----------------------------------------------------------------------------------------
 # File: 001_startHere.R
-# Project: UT_FAIL-FELL
+# Project: Bolognese
 # Author: Mykel Brinkerhoff
-# Date: 2026-05-31 (Su)
+# Date: 2026-08-21 (F)
 # Description: What does this script do?
 #
 # Usage:
@@ -16,7 +16,12 @@
 ### install packages if not yet installed
 # renv::install(
 #   packages = c(
-#     "tidyverse",
+#     "dplyr",
+#     "readr",
+#     "stringr",
+#     "purrr",
+#     "forcats",
+#     "ggplot2",
 #     "viridis",
 #     "here",
 #     "remotes",
@@ -24,14 +29,13 @@
 #     "ggokabeito",
 #     "adehabitatHR",
 #     "sp",
-#     "purrr",
 #     "reticulate",
 #     "geomtextpath"
 #   )
 # )
 
-# remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
-# remotes::install_github("joeystanley/joeysvowels") # vowel datasets
+remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
+remotes::install_github("joeystanley/joeysvowels") # vowel datasets
 
 ### restore R session and packages to versions found in the renv.lock file
 renv::restore()
@@ -46,7 +50,7 @@ library(reticulate)
 library(ggplot2) # for plotting
 library(geomtextpath)
 library(here) # for creating pathways relative to the top-level directory
-# library(remotes) # allows accessing github
+library(remotes) # allows accessing github
 library(joeyr) # needed for the find_outliers function
 library(ggokabeito) # colorblind friendly color based on Okabe-Ito scheme
 library(sp) # needed for Bhattacharyya's Affinity calculation
