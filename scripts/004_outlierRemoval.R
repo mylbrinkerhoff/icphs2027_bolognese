@@ -14,7 +14,7 @@
 #----------------------------------------------------------------------------------------
 
 ### Keep 95% of the vowels based on F1, F2
-vwls_clean <- vwls |> 
+vwls_clean <- vwls_stress |> 
   dplyr::mutate(
     is_outlier = joeyr::find_outliers(F1, F2, keep = 0.95),
     .by = c("phoneme")
@@ -22,3 +22,7 @@ vwls_clean <- vwls |>
   dplyr::filter(
     !is_outlier
   )
+
+table(vwls_clean$phoneme)
+
+table(vwls_clean$phoneme, vwls_clean$environment)

@@ -55,6 +55,7 @@ library(joeyr) # needed for the find_outliers function
 library(ggokabeito) # colorblind friendly color based on Okabe-Ito scheme
 library(sp) # needed for Bhattacharyya's Affinity calculation
 library(adehabitatHR) # needed for Bhattacharyya's Affinity calculation
+library(boot) # needed for bootstraping
 
 
 ### Load vowel specific packages

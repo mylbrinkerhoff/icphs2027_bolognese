@@ -14,8 +14,36 @@
 #----------------------------------------------------------------------------------------
 
 ### Load the data for bolognese
-bolognese <- readr::read_csv(here::here(
-  "data",
-  "raw",
-  "master.csv"
-))
+bolognese <- readr::read_csv(
+  here::here(
+    "data",
+    "raw",
+    "master.csv"
+  ), 
+  na = c("", NA),
+  col_types = list(
+    phoneme = "c",
+    stress = "l",
+    word = "f",
+    time = "n",
+    duration = "n",
+    nextSeg = "f",
+    F1 = "n",
+    F2 = "n",
+    F3 = "n",
+    F4 = "n",
+    speaker = "f", 
+    lesson = "f"
+  )
+) |> 
+  dplyr::mutate(
+    environment = dplyr::case_when(
+      nextSeg %in% c("ʎ", "l", "lː") ~ "prelateral", 
+      nextSeg %in% c("m", "mː", "n", "nː", "ɲ", "ɲː", "ŋ", "ŋː") ~ "prenasal",
+      nextSeg %in% c("rː", "r") ~ "prerhotic",
+      TRUE ~ "elsewhere"
+    )
+  )
+
+head(bolognese)
+glimpse(bolognese)
