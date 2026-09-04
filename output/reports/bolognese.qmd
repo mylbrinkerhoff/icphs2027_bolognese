@@ -1,5 +1,43 @@
 ---
-title: "Untitled"
-format: html
+title: "Bolognese Vowel Analysis"
+date: "2026-09-04"
+date-modified: last-modi
+author: 
+  - name: Mykel Loren Brinkerhoff
+    orcid: 0000-0002-2190-6544
+    email: mlbrinke@uw.edu
+    affilitation: 
+      - name: University of Washington 
+        city: Seattle
+        state: WA
+        url: www.uw.edu
+format: 
+  html: 
+    toc: true
+    toc-depth: 2
+    toc-title: "Contents"
+    toc-location: left-body
+    html-math-method: katex
+    number-sections: true
+    number-depth: 3
+    code-links: 
+      - text: GitHub Repository
+        repo: https://github.com/mylbrinkerhoff/icphs2027_bolognese
+bibliography: bolognese.bib
+csl: unified-style-sheet-for-linguistics.csl
 ---
 
+### Introduction
+
+
+
+### Data description
+
+### Vowel Plots
+
+### Similarity and Overlap analysis
+
+### References
+
+::: {#refs}
+:::
