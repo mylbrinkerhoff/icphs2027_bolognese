@@ -35,3 +35,6 @@ vwls_means <- vwls_norm |>
     F2_df = mean(F2_df),
     .by = phoneme
   )
+
+
+readr::write_csv(vwls_norm, file = here::here("data", "intermediate", "vowels_norm.csv"))

@@ -107,29 +107,7 @@ nasal_back_overlap <- nasal_back |>
   )
 nasal_back_overlap
 
-cor(nasal_front$F1_df,nasal_front$F2_df)
-
-ba <- function(data, vowel1 = "KIT", vowel2 = "DRESS") {
-
-  d <- data |>
-    dplyr::filter(phoneme %in% c(vowel1, vowel2)) |>
-    dplyr::mutate(
-      vowel = factor(phoneme, levels = c(vowel1, vowel2))
-    )
-
-  xy <- split(
-    d[, c("F1", "F2")],
-    d$vowel
-  )
-
-  overlap <- kerneloverlap(
-    lapply(xy, function(x) {
-      kernelUD(x)
-    }),
-    method = "BA"
-  )
-
-  overlap[2, 1]
-}
-
-ba(front_central_all, vowel1 = "æ", vowel2 = "a")
+cor <- (cor_formant(nasal_back, F1 = F1_df, F2 = F2_df))
+ex <- expected_BA(nasal_back, vowel1 = "a", vowel2 = "ɑ")
+threshold_BA(cor, ex)
+nasal_back_overlap

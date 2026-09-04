@@ -66,3 +66,5 @@ vwls_unstress <- bolognese |>
 (vwl_unstress_count <- table(vwls_unstress$phoneme))
 
 (vwl_unstress_environment <- table(vwls_unstress$phoneme, vwls_unstress$environment))
+
+(table(vwls_stress$phoneme, vwls_stress$speaker))
