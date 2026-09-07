@@ -18,7 +18,7 @@ format:
     toc-title: "Contents"
     toc-location: left-body
     html-math-method: katex
-    # embed-resources: true
+    embed-resources: true
     # number-sections: true
     # number-depth: 3
     code-fold: true
@@ -37,6 +37,7 @@ csl: unified-style-sheet-for-linguistics.csl
 remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
 remotes::install_github("joeystanley/joeysvowels") # vowel datasets
 
+# renv::install(c("knitr","rmarkdown","fwb"))
 ### restore R session and packages to versions found in the renv.lock file
 # renv::restore()
 
@@ -45,6 +46,8 @@ library(dplyr) # for data manipulation, graphic, and data wrangling
 library(readr) # loading in data
 library(stringr) # look for stuff in strings
 library(purrr)
+library(knitr)
+library(rmarkdown)
 library(forcats)
 library(reticulate)
 library(ggplot2) # for plotting
@@ -54,6 +57,7 @@ library(remotes) # allows accessing github
 library(joeyr) # needed for the find_outliers function
 library(ggokabeito) # colorblind friendly color based on Okabe-Ito scheme
 library(viridis)
+library(fwb)
 library(sp) # needed for Bhattacharyya's Affinity calculation
 library(adehabitatHR) # needed for Bhattacharyya's Affinity calculation
 library(boot) # needed for bootstraping
@@ -219,7 +223,12 @@ bolognese <- readr::read_csv(
 
 Data comes from the audio accompanying the lessons found in @vitaliDscdegarretBulgnaisManuale2009. Each lesson's audio file was transcribed, segmented, and annotated with which vowels were stressed and who the speaker was. Praat was used to calculate the duration of the segment and the first four resonant frequencies and was used to create a CSV file containing the phoneme, stress, word, where in the audio file it was located, and what the next segment was.
 
-I then created a new variable indicating the phonological environment that the segments were found in: (i) `prelateral` if the segment occured before one of the laterals; (ii) `prenasal` if the segment occured before any nasal consonant; (iii) `prerhotic` if the next segment was a rhotic; (iv) `elsewhere` for everything else. These levels were selected because it is well known that laterals, nasals, and rhotics can greatly influence the vowels next to them via a phenomenon known as coarticulation. 
+I then created a new variable indicating the phonological environment that the segments were found in: 
+
+- `prelateral` if the segment occured before one of the laterals; 
+- `prenasal` if the segment occured before any nasal consonant;
+- `prerhotic` if the next segment was a rhotic; 
+- `elsewhere` for everything else. These levels were selected because it is well known that laterals, nasals, and rhotics can greatly influence the vowels next to them via a phenomenon known as coarticulation. 
 
 This gives us a dataframe with the following variables. 
 
@@ -319,6 +328,8 @@ vowel_speaker <- table(vwls_stress$phoneme, vwls_stress$speaker)
 ## Stressed Vowels from dataset
 ```{r}
 #| echo: false
+#| label: phoneme_freq
+
 vowel_count |> 
   knitr::kable(
     col.names = c("Phoneme", "Freq")
@@ -328,6 +339,8 @@ vowel_count |>
 ## Stressed Vowels by environment
 ```{r}
 #| echo: false
+#| label: phoneme_environment
+
 vowel_environment |> 
   knitr::kable(
     col.names = c("Phoneme", "Elsewhere", "Prelateral", "Prenasal", "Prerhotic")
@@ -337,6 +350,8 @@ vowel_environment |>
 ## Stressed Vowels by speaker
 ```{r}
 #| echo: false
+#| label: phoneme_speakers
+
 vowel_speaker |> 
   knitr::kable(
     col.names = c("Phoneme", "LL", "RM")
@@ -347,6 +362,7 @@ vowel_speaker |>
 From here it is good practice to remove outliers from the dataset. I find taking 95% of the data based on the mahalnobis distance really effective and luckily there is a handy way to do this using the `joeyr` package, which uses tidy syntax to calculate the mahalanobis distance and then to slowly delete rows until 95% of the data remains for the group variables. In this case, we will group by phoneme, speaker, and environment and keep 95% of those groups. 
 
 ```{r}
+#| label: outlier_removal
 
 vwls_clean <- vwls_stress |> 
   dplyr::mutate(
@@ -360,24 +376,24 @@ vwls_clean <- vwls_stress |>
 
 By doing this we only lost `{r} nrow(vwls_stress)-nrow(vwls_clean)` vowels from the original `{r} nrow(vwls_stress)`.
 
+I also typically check the fundamental frequency (f0) and Energy of the signal since this impacts if Praat or Voicesauce was able to calculate the formants and other voice quality measures correctly. In those cases I z-score the f0 and only keep tokens within 3 SD of the mean. I also keep all tokens whose energy does not equal zero. I was not able to do that because I do not have those measures. 
+
 ### Vowel Plots
 
 The next thing we need to do is normalize the vowels. There are a lot of different ways that we can do this but my favorite has to be the ∆F method described in @johnsonDFMethodVocal2020. This calculates a measure called $\Delta F$ which is the average formant difference and then divides the formant by this measure. This essentialy normalizes the formants by assuming everyone has the same vocal tract length. 
 
-<!-- $$
-\Delta F = \frac{1}{mn}\sum_{j}^{m}\sum_{i}^{n}\left[ \frac{F_{ij}}{i - 0.5} \right] 
-$$ -->
-
 Once we have these new values we are ready to begin plotting. Luckily there is a very handy package called `tidynorm` which can do this for us.
 
 ```{r}
-#| message: false
+#| label: vowel_normalize
+
 vwls_norm <- vwls_clean |> 
   tidynorm::norm_deltaF(
     F1:F4, 
     .by = speaker
   )
 ```
+
 We are going to plot several different vowel plots. One based on vowel length, one by speaker, and one for each environment.
 
 
@@ -585,24 +601,409 @@ vwls_norm |>
 
 :::
 
+The plotting reveals some interesting behaviors. 
 
+- There is a difference between how LL and RM produce the low vowels. RM seems to have them all overlap whereas LL doesn't. 
+- The /æ/ vowel has two distributions. Prelateral /æ/ is closer to /e/ otherwise it appears low and front
+- All three vowels are clustering together prenasaly and appear to have a large degree of overlap
+- There are very few instances of low vowels prerhoticly. This might be a simple gap in the data or a general feature of the language
 
 
 ## Similarity and Overlap analysis
 
-### Hypotheses
+The analysis will consist of finding the pillai trace and BA for each pairwise comparison between the low vowels followed by a bootstrap analysis for determining the robustness of the measures. 
 
+Each measure also has a treshold measure that indicates whether the distributions are similar based on @stanleySampleSizeMatters2023 and whether the distributions are overlapped based on @bernardiBhattacharyyasAffinityVs2025. 
+
+If the Pillai trace is smaller than the threshold then this is evidence that vowels are similar. If the BA is higher than the threshold then this indicates that the distributions are overlapping.
+
+I am not aware of linguists using bootstrapping to asses the robustness of the measures so I need to establish some rules for interpreting this. 
+
+For Pillai Traces:
+
+- If the entire range of the Bootstrap 95% CI lies below the threshold, this is evidence that these distributions are similar. 
+- If the entire rannge of the Bootstrap 95% CI lies above the threshold, this is evidence that these distributions are not similar.
+- If the Bootstrap 95% CI stradles the threshold, we do not have evidence for similarity.
+
+For BA:
+
+- If the entire range of the Bootstrap 95% CI lies below the threshold, this is evidence that these distributions are not overlapped. 
+- If the entire rannge of the Bootstrap 95% CI lies above the threshold, this is evidence that these distributions are overlapped.
+- If the Bootstrap 95% CI stradles the threshold, we do not have evidence for overlap. 
+
+In order to assess the three low vowels we need to split the data into subsets based on speaker and the environments. We also will be removing prelateral vowels from the analysis because /æ/ is realized as [e]. This, however, is strong evidence that phonologically /æ/ is a seperate sound, that what is being orthographically represented as /æ/ is a seperate sound, or that this is a lexical effect from the small class of sounds that have /æ/ prelaterally.
+
+
+```{r}
+#| label: data_subsetting
+
+### vowels 
+frntlss <- vwls_norm |> 
+  dplyr::filter(
+    phoneme %in% c("a", "ɑ"),
+    environment != "prelateral"
+  )
+
+bcklss <- vwls_norm |> 
+  dplyr::filter(
+    phoneme %in% c("æ", "a"),
+    environment != "prelateral"
+  )
+
+cntrlss <- vwls_norm |> 
+  dplyr::filter(
+    phoneme %in% c( "æ", "ɑ"),
+    environment != "prelateral"
+  )
+
+### Speaker subsetting
+ll_vwls_bcklss <- vwls_norm |> 
+  dplyr::filter(
+    speaker == "LL",
+    phoneme %in% c("æ", "a"),
+    environment != "prelateral"
+  )
+
+ll_vwls_frntlss <- vwls_norm |> 
+  dplyr::filter(
+    speaker == "LL",
+    phoneme %in% c("a", "ɑ"),
+    environment != "prelateral"
+  )
+
+ll_vwls_cntrlss <- vwls_norm |> 
+  dplyr::filter(
+    speaker == "LL",
+    phoneme %in% c("æ", "ɑ"),
+    environment != "prelateral"
+  )
+
+rm_vwls_bcklss <- vwls_norm |> 
+  dplyr::filter(
+    speaker != "LL",
+    phoneme %in% c("æ", "a"),
+    environment != "prelateral"
+  )
+
+rm_vwls_frntlss <- vwls_norm |> 
+  dplyr::filter(
+    speaker != "rm",
+    phoneme %in% c("a", "ɑ"),
+    environment != "prelateral"
+  )
+
+rm_vwls_cntrlss <- vwls_norm |> 
+  dplyr::filter(
+    speaker != "LL",
+    phoneme %in% c("æ", "ɑ"),
+    environment != "prelateral"
+  )
+```
 
 
 ### Calculating the Pillai Trace 
 
+Calculating the Pillai Trace is fairly straightforward and involves using the built in `manova` function in R. A MANOVA is the same thing as an ANOVA but uses multivariant data instead. The multivariate approach is better because vowels are inherently multivarient because they are based their position in space based on F1 and F2. 
 
+In our analysis we will be using F1, F2 in our MANOVA. @kelleyComparisonFourVowel2020 found that adding duration as a third variable was more informative than F1 and F2 alone but given that there is some rather extreme behavior in duration due to stress we will not consider adding duration. 
+
+```{r}
+#| label: overall_pillai
+#| warning: false
+
+pillai_fn <- function(data, i) {
+  
+  df <- data[i,]
+
+  overlap(F1 = df$F1_df[i], F2 = df$F2_df[i], vowel = df$phoneme[i], method = "pillai")
+}
+
+# frntlss
+set.seed(1234)
+boot_pillai <- boot::boot(frntlss, pillai_fn, R = 10000)
+ci_pillai <- boot::boot.ci(boot_pillai, type = "bca")
+
+frntless_pillai <- tibble::tibble(
+  pillai = overlap(F1 = frntlss$F1_df, F2 = frntlss$F2_df, vowel = frntlss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(frntlss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+
+#bcklss
+set.seed(1234)
+bcklss_boot <- boot::boot(bcklss, pillai_fn, R = 10000)
+bcklss_ci <- boot::boot.ci(bcklss_boot, type = "bca")
+
+bcklss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = bcklss$F1_df, F2 = bcklss$F2_df, vowel = bcklss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(bcklss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+
+#cntrlss
+set.seed(1234)
+cntrlss_boot <- boot::boot(cntrlss, pillai_fn, R = 10000)
+cntrlss_ci <- boot::boot.ci(cntrlss_boot, type = "bca")
+
+cntrlss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = cntrlss$F1_df, F2 = cntrlss$F2_df, vowel = cntrlss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(cntrlss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+```
+
+```{r}
+#| label: ll_pillai
+#| warning: false
+
+# ll frntlss
+set.seed(1234)
+ll_frntlss_boot <- boot::boot(ll_vwls_frntlss, pillai_fn, R = 10000)
+ll_frntlss_ci <- boot::boot.ci(ll_frntlss_boot, type = "bca")
+
+ll_frntlss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = ll_vwls_frntlss$F1_df, F2 = ll_vwls_frntlss$F2_df, vowel = ll_vwls_frntlss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(ll_vwls_frntlss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+
+# ll bcklss
+set.seed(1234)
+ll_bcklss_boot <- boot::boot(ll_vwls_bcklss, pillai_fn, R = 10000)
+ll_bcklss_ci <- boot::boot.ci(ll_bcklss_boot, type = "bca")
+
+ll_bcklss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = ll_vwls_bcklss$F1_df, F2 = ll_vwls_bcklss$F2_df, vowel = ll_vwls_bcklss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(ll_vwls_bcklss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+
+# ll cntrlss
+set.seed(1234)
+ll_cntrlss_boot <- boot::boot(ll_vwls_cntrlss, pillai_fn, R = 10000)
+ll_cntrlss_ci <- boot::boot.ci(ll_cntrlss_boot, type = "bca")
+
+ll_cntrlss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = ll_vwls_cntrlss$F1_df, F2 = ll_vwls_cntrlss$F2_df, vowel = ll_vwls_cntrlss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(ll_vwls_cntrlss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+```
+
+
+```{r}
+#| label: rm_pillai
+#| message: false
+#| warning: false
+
+# rm frntlss
+set.seed(1234)
+rm_frntlss_boot <- boot::boot(rm_vwls_frntlss, pillai_fn, R = 10000)
+rm_frntlss_ci <- boot::boot.ci(rm_frntlss_boot, type = "bca")
+
+rm_frntlss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = rm_vwls_frntlss$F1_df, F2 = rm_vwls_frntlss$F2_df, vowel = rm_vwls_frntlss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(rm_vwls_frntlss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+
+# rm bcklss
+set.seed(1234)
+rm_bcklss_boot <- boot::boot(rm_vwls_bcklss, pillai_fn, R = 10000)
+rm_bcklss_ci <- boot::boot.ci(rm_bcklss_boot, type = "bca")
+
+rm_bcklss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = rm_vwls_bcklss$F1_df, F2 = rm_vwls_bcklss$F2_df, vowel = rm_vwls_bcklss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(rm_vwls_bcklss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+
+# rm cntrlss
+set.seed(1234)
+rm_cntrlss_boot <- boot::boot(rm_vwls_cntrlss, pillai_fn, R = 10000)
+rm_cntrlss_ci <- boot::boot.ci(rm_cntrlss_boot, type = "bca")
+
+rm_cntrlss_pillai <- tibble::tibble(
+  pillai = overlap(F1 = rm_vwls_cntrlss$F1_df, F2 = rm_vwls_cntrlss$F2_df, vowel = rm_vwls_cntrlss$phoneme, method = "pillai"),
+  pillai_cutoff = exp(1) / (nrow(rm_vwls_cntrlss) / 2),
+  # BCa_CI = [0.0302, 0.226]
+)
+```
+
+| Comparison | Pillai | Pillai cutoff | BCa 95% CI | 
+|:-----------|:------:|:-------------:|:----------:|
+| æ vs. a    | `{r} bcklss_pillai$pillai` | `{r} bcklss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(bcklss_ci)$bca`] |
+| a vs. ɑ    | `{r} frntless_pillai$pillai` | `{r} frntless_pillai$pillai_cutoff` | [`{r} fwb::get_ci(ci_pillai)$bca`] |
+| æ vs. ɑ    | `{r} cntrlss_pillai$pillai` | `{r} cntrlss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(cntrlss_ci)$bca`] |
+| LL's æ vs. a | `{r} ll_bcklss_pillai$pillai` | `{r} ll_bcklss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(ll_bcklss_ci)$bca`] |
+| LL's a vs. ɑ | `{r} ll_frntlss_pillai$pillai` | `{r} ll_frntlss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(ll_frntlss_ci)$bca`] |
+| LL's æ vs. ɑ | `{r} ll_cntrlss_pillai$pillai` | `{r} ll_cntrlss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(ll_cntrlss_ci)$bca`] |
+| RM's æ vs. a | `{r} rm_bcklss_pillai$pillai` | `{r} rm_bcklss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(rm_bcklss_ci)$bca`] |
+| RM's a vs. ɑ | `{r} rm_frntlss_pillai$pillai` | `{r} rm_frntlss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(rm_frntlss_ci)$bca`] |
+| RM's æ vs. ɑ | `{r} rm_cntrlss_pillai$pillai` | `{r} rm_cntrlss_pillai$pillai_cutoff` | [`{r} fwb::get_ci(rm_cntrlss_ci)$bca`] |
 
 ### Calculating the Bhattacharrya's Affinity
 
+
+```{r}
+#| label: overall_ba
+#| warning: false
+
+ba_fn <- function(data, i) {
+  
+  df <- data[i,]
+
+  overlap(F1 = df$F1_df[i], F2 = df$F2_df[i], vowel = df$phoneme[i], method = "BA")
+}
+
+# frntlss
+set.seed(1234)
+boot_ba <- boot::boot(frntlss, ba_fn, R = 10000)
+ci_ba <- boot::boot.ci(boot_ba, type = "bca")
+
+frntless_ba <- tibble::tibble(
+  ba = overlap(F1 = frntlss$F1_df, F2 = frntlss$F2_df, vowel = frntlss$phoneme, method = "BA"),
+  cor = (cor_formant(frntlss, F1 = F1_df, F2 = F2_df)),
+  ex = expected_BA(frntlss, vowel1 = "a", vowel2 = "ɑ"),
+  ba_cutoff = threshold_BA(cor, ex)
+  # BCa_CI = [0.0302, 0.226]
+)
+
+#bcklss
+set.seed(1234)
+bcklss_boot_ba <- boot::boot(bcklss, ba_fn, R = 10000)
+bcklss_ci_ba <- boot::boot.ci(bcklss_boot_ba, type = "bca")
+
+bcklss_ba <- tibble::tibble(
+  ba = overlap(F1 = bcklss$F1_df, F2 = bcklss$F2_df, vowel = bcklss$phoneme, method = "BA"),
+  cor = (cor_formant(bcklss, F1 = F1_df, F2 = F2_df)),
+  ex = expected_BA(bcklss, vowel1 = "æ", vowel2 = "a"),
+  ba_cutoff = threshold_BA(cor, ex)
+  # BCa_CI = [0.0302, 0.226]
+)
+
+#cntrlss
+set.seed(1234)
+cntrlss_boot_ba <- boot::boot(cntrlss, ba_fn, R = 10000)
+cntrlss_ci_ba <- boot::boot.ci(cntrlss_boot_ba, type = "bca")
+
+cntrlss_ba <- tibble::tibble(
+  ba = overlap(F1 = cntrlss$F1_df, F2 = cntrlss$F2_df, vowel = cntrlss$phoneme, method = "BA"),
+  cor = (cor_formant(cntrlss, F1 = F1_df, F2 = F2_df)),
+  ex = expected_BA(cntrlss, vowel1 = "æ", vowel2 = "ɑ"),
+  ba_cutoff = threshold_BA(cor, ex)
+  # BCa_CI = [0.0302, 0.226]
+)
+```
+
+```{r}
+#| label: ll_ba
+#| warning: false
+
+# ll frntlss
+set.seed(1234)
+ll_frntlss_boot_ba <- boot::boot(ll_vwls_frntlss, ba_fn, R = 10000)
+ll_frntlss_ci_ba <- boot::boot.ci(ll_frntlss_boot_ba, type = "bca")
+
+ll_frntlss_ba <- tibble::tibble(
+  ba = overlap(F1 = ll_vwls_frntlss$F1_df, F2 = ll_vwls_frntlss$F2_df, vowel = ll_vwls_frntlss$phoneme, method = "BA"),
+  cor = (cor_formant(ll_vwls_frntlss, F1 = F1_df, F2 = F2_df)),
+  ex = expected_BA(ll_vwls_frntlss, vowel1 = "a", vowel2 = "ɑ"),
+  ba_cutoff = threshold_BA(cor, ex)
+)
+
+# ll bcklss
+set.seed(1234)
+ll_bcklss_boot_ba <- boot::boot(ll_vwls_bcklss, ba_fn, R = 10000)
+ll_bcklss_ci_ba <- boot::boot.ci(ll_bcklss_boot_ba, type = "bca")
+
+ll_bcklss_ba <- tibble::tibble(
+  ba = overlap(F1 = ll_vwls_bcklss$F1_df, F2 = ll_vwls_bcklss$F2_df, vowel = ll_vwls_bcklss$phoneme, method = "BA"),
+  cor = (cor_formant(ll_vwls_bcklss, F1 = F1_df, F2 = F2_df)),
+  ex = expected_BA(ll_vwls_bcklss, vowel1 = "æ", vowel2 = "a"),
+  ba_cutoff = threshold_BA(cor, ex)
+)
+
+# ll cntrlss
+set.seed(1234)
+ll_cntrlss_boot_ba <- boot::boot(ll_vwls_cntrlss, ba_fn, R = 10000)
+ll_cntrlss_ci_ba <- boot::boot.ci(ll_cntrlss_boot_ba, type = "bca")
+
+ll_cntrlss_ba <- tibble::tibble(
+  ba = overlap(F1 = ll_vwls_cntrlss$F1_df, F2 = ll_vwls_cntrlss$F2_df, vowel = ll_vwls_cntrlss$phoneme, method = "BA"),
+  cor = (cor_formant(ll_vwls_cntrlss, F1 = F1_df, F2 = F2_df)),
+  ex = expected_BA(ll_vwls_cntrlss, vowel1 = "æ", vowel2 = "ɑ"),
+  ba_cutoff = threshold_BA(cor, ex)
+)
+```
+
+```{r}
+#| label: rm_ba
+#| message: false
+#| warning: false
+
+# rm frntlss
+set.seed(1234)
+rm_frntlss_boot_ba <- boot::boot(rm_vwls_frntlss, ba_fn, R = 10000)
+rm_frntlss_ci_ba <- boot::boot.ci(rm_frntlss_boot_ba, type = "bca")
+
+rm_frntlss_ba <- tibble::tibble(
+  ba = overlap(F1 = rm_vwls_frntlss$F1_df, F2 = rm_vwls_frntlss$F2_df, vowel = rm_vwls_frntlss$phoneme, method = "BA"),
+  cor = cor_formant(rm_vwls_frntlss, F1 = F1_df, F2 = F2_df),
+  ex = expected_BA(rm_vwls_frntlss, vowel1 = "a", vowel2 = "ɑ"),
+  ba_cutoff = threshold_BA(cor, ex)
+)
+
+# rm bcklss
+set.seed(1234)
+rm_bcklss_boot_ba <- boot::boot(rm_vwls_bcklss, ba_fn, R = 10000)
+rm_bcklss_ci_ba <- boot::boot.ci(rm_bcklss_boot_ba, type = "bca")
+
+rm_bcklss_ba <- tibble::tibble(
+  ba = overlap(F1 = rm_vwls_bcklss$F1_df, F2 = rm_vwls_bcklss$F2_df, vowel = rm_vwls_bcklss$phoneme, method = "BA"),
+  cor = cor_formant(rm_vwls_bcklss, F1 = F1_df, F2 = F2_df),
+  ex = expected_BA(rm_vwls_bcklss, vowel1 = "æ", vowel2 = "a"),
+  ba_cutoff = threshold_BA(cor, ex)
+)
+
+# rm cntrlss
+set.seed(1234)
+rm_cntrlss_boot_ba <- boot::boot(rm_vwls_cntrlss, ba_fn, R = 10000)
+rm_cntrlss_ci_ba <- boot::boot.ci(rm_cntrlss_boot_ba, type = "bca")
+
+rm_cntrlss_ba <- tibble::tibble(
+  ba = overlap(F1 = rm_vwls_cntrlss$F1_df, F2 = rm_vwls_cntrlss$F2_df, vowel = rm_vwls_cntrlss$phoneme, method = "BA"),
+  cor = cor_formant(rm_vwls_cntrlss, F1 = F1_df, F2 = F2_df),
+  ex = expected_BA(rm_vwls_cntrlss, vowel1 = "æ", vowel2 = "ɑ"),
+  ba_cutoff = threshold_BA(cor, ex)
+)
+```
+
+| Comparison | BA | BA cutoff | BCa 95% CI | 
+|:-----------|:------:|:-------------:|:----------:|
+| æ vs. a    | `{r} bcklss_ba$ba` | `{r} bcklss_ba$ba_cutoff` | [`{r} fwb::get_ci(bcklss_ci_ba)$bca`] |
+| a vs. ɑ    | `{r} frntless_ba$ba` | `{r} frntless_ba$ba_cutoff` | [`{r} fwb::get_ci(ci_ba)$bca`] |
+| æ vs. ɑ    | `{r} cntrlss_ba$ba` | `{r} cntrlss_ba$ba_cutoff` | [`{r} fwb::get_ci(cntrlss_ci_ba)$bca`] |
+| LL's æ vs. a | `{r} ll_bcklss_ba$ba` | `{r} ll_bcklss_ba$ba_cutoff` | [`{r} fwb::get_ci(ll_bcklss_ci_ba)$bca`] |
+| LL's a vs. ɑ | `{r} ll_frntlss_ba$ba` | `{r} ll_frntlss_ba$ba_cutoff` | [`{r} fwb::get_ci(ll_frntlss_ci_ba)$bca`] |
+| LL's æ vs. ɑ | `{r} ll_cntrlss_ba$ba` | `{r} ll_cntrlss_ba$ba_cutoff` | [`{r} fwb::get_ci(ll_cntrlss_ci_ba)$bca`] |
+| RM's æ vs. a | `{r} rm_bcklss_ba$ba` | `{r} rm_bcklss_ba$ba_cutoff` | [`{r} fwb::get_ci(rm_bcklss_ci_ba)$bca`] |
+| RM's a vs. ɑ | `{r} rm_frntlss_ba$ba` | `{r} rm_frntlss_ba$ba_cutoff` | [`{r} fwb::get_ci(rm_frntlss_ci_ba)$bca`] |
+| RM's æ vs. ɑ | `{r} rm_cntrlss_ba$ba` | `{r} rm_cntrlss_ba$ba_cutoff` | [`{r} fwb::get_ci(rm_cntrlss_ci_ba)$bca`] |
+
 ### Overall patterns
 
-## What did we learn?
+- Overall æ ~ a shows a lack of similarity and that the distributions are not overlapped.
+- Overall a ~ ɑ shows a lack of similarity and the distributions are not overlapped.
+- Overall æ ~ ɑ is uncertain when it comes to similarity and uncertainty about overlap.
+- LL's æ ~ a shows a lack of similarity and a lack of overlap
+- LL's a ~ ɑ shows a lack of similarity and a lack of overlap
+- LL's æ ~ ɑ shows a lack of similarity and a lack overlap
+- RM's æ ~ a shows an uncertainty of similarity and uncertainty about overlap in distributions
+- RM's a ~ ɑ shows a lack of similarity and lack of overlap in distributions
+- RM's æ ~ ɑ shows that the vowels are similar and overlap in distributions
+
+My opinion is that the three vowels are separate phonemes except for RM's æ ~ ɑ pair which shows a high degree of similarity and overlap in distributions. Additionally, RM's æ ~ a vowels show some uncertainty about similarity and overlap.
 
 ## References
 
@@ -612,3 +1013,4 @@ vwls_norm |>
 [^1]: Two fantastic resources going into all of this are @hastieElementsStatisticalLearning2009 and @jamesIntroductionStatisticalLearning2021. 
 
 [^2]: This is only true when we are doing pairwise comparisons. The upper bound of a Pillai is actually $k-1$, where $k$ is the number of groups that are being compared [@prabhakaranMANOVATestMultiple2026]. Since linguists are often doing pairwise comparisons this is effectively bound at 1, since $2-1=1$.
+
