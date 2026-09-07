@@ -33,6 +33,7 @@
 #     "geomtextpath"
 #   )
 # )
+# renv::install("yaml")
 
 remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
 remotes::install_github("joeystanley/joeysvowels") # vowel datasets
@@ -72,4 +73,10 @@ source(here::here(
   "scripts",
   "functions",
   "fave_code_allophones.R"
+))
+
+source(here::here(
+  "scripts",
+  "functions",
+  "cor_formants.R"
 ))

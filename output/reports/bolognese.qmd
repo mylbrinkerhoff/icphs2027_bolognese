@@ -1,7 +1,7 @@
 ---
 title: "Bolognese Vowel Analysis"
 date: "2026-09-04"
-date-modified: last-modi
+date-modified: last-modified
 author: 
   - name: Mykel Loren Brinkerhoff
     orcid: 0000-0002-2190-6544
@@ -18,8 +18,10 @@ format:
     toc-title: "Contents"
     toc-location: left-body
     html-math-method: katex
-    number-sections: true
-    number-depth: 3
+    # embed-resources: true
+    # number-sections: true
+    # number-depth: 3
+    code-fold: true
     code-links: 
       - text: GitHub Repository
         repo: https://github.com/mylbrinkerhoff/icphs2027_bolognese
@@ -27,17 +29,586 @@ bibliography: bolognese.bib
 csl: unified-style-sheet-for-linguistics.csl
 ---
 
-### Introduction
+```{r}
+#| echo: false
+#| label: package_install
+#| message: false 
 
+remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
+remotes::install_github("joeystanley/joeysvowels") # vowel datasets
 
+### restore R session and packages to versions found in the renv.lock file
+# renv::restore()
 
-### Data description
+### Load helper packages
+library(dplyr) # for data manipulation, graphic, and data wrangling
+library(readr) # loading in data
+library(stringr) # look for stuff in strings
+library(purrr)
+library(forcats)
+library(reticulate)
+library(ggplot2) # for plotting
+library(geomtextpath)
+library(here) # for creating pathways relative to the top-level directory
+library(remotes) # allows accessing github
+library(joeyr) # needed for the find_outliers function
+library(ggokabeito) # colorblind friendly color based on Okabe-Ito scheme
+library(viridis)
+library(sp) # needed for Bhattacharyya's Affinity calculation
+library(adehabitatHR) # needed for Bhattacharyya's Affinity calculation
+library(boot) # needed for bootstraping
+
+### Load vowel specific packages
+library(tidynorm) # package for vowel normalization
+
+```
+
+```{r}
+#| echo: false
+#| label: helper_functions
+#| messages: false
+
+cor_formant <- function(df, F1, F2) {
+  
+  # Correlation between F1 and F2
+  cor <- stats::cor(
+    df$F1,
+    df$F2,
+    use = "complete.obs"
+  )
+
+}
+
+# Formula for finding the expected BA for samples of equal and unequal size based on Bernardi (2026).
+
+expected_BA <- function(df, vowel1, vowel2) {
+  
+  # Find the sample size 
+  n1 <- sum(df$phoneme == vowel1)
+  n2 <- sum(df$phoneme == vowel2)
+
+  #calculate the mean of the samples
+  m <- mean(n1,n2)
+
+  # Calculate expected BA for equal sized samples
+  BA_even <- 0.142120 + 0.527779 * atan(0.227416 * m)
+
+  # Check if the sample are equal in size and return BA_even if TRUE and calculate residual and add that to BA_even if FALSE
+  if (n1==n2) {
+
+    return(BA_even)    
+  
+  } else {
+
+    #find the imbalance ratio between the smallest and the largest
+    ratio <- min(n1, n2)/max(n1, n2)
+
+    #find the absolute imbalance between n1, n2
+    abs_imbalance <- abs(n1-n2)
+
+    #calculate residuals
+    residual <- -0.06822 + (0.06197 * ratio) - (0.000547 * abs_imbalance) + (0.002892 * ratio *  abs_imbalance)
+
+    # Add the residuals to BA_even for expected BA for uneven
+    BA_uneven <- BA_even + residual
+
+    return(BA_uneven)
+  }
+}
+
+# Vowel overlap function from Joey Stanley at BYU
+# at https://joeystanley.com/blog/vowel-overlap-in-r-advanced-topics/
+overlap <- function(F1, F2, vowel, method = "pillai") {
+  vowel_data <- data.frame(vowel) %>%
+    droplevels()
+
+  if (nrow(vowel_data) < 1) {
+    return(NA)
+  } # not zero
+  if (length(table(vowel_data)) < 2) {
+    return(NA)
+  } # both vowels are represented
+  if (min(table(vowel_data)) < 5) {
+    return(NA)
+  } # there are at least 5 of each vowel
+
+  if (method == "pillai") {
+    summary(manova(cbind(F1, F2) ~ vowel))$stats["vowel", "Pillai"]
+  } else if (method == "BA") {
+    adehabitatHR::kerneloverlap(
+      sp::SpatialPointsDataFrame(cbind(F1, F2), vowel_data),
+      method = 'BA'
+    )[2, 1]
+  } else {
+    warning("Improper method")
+    return(NA)
+  }
+}
+
+threshold_BA <- function(formant_cor, BA_expected) {
+
+  return(-0.019907 + (-0.242121 * formant_cor) + (1.017491 * BA_expected) +  (0.277828 * formant_cor * BA_expected))
+  
+}
+
+```
+
+## Introduction
+
+This page is dedicated to presenting an analysis of Bolognese vowels based on the audio accompanying the lessons found in @vitaliDscdegarretBulgnaisManuale2009's *Dscårret in bulgnaiṡ?: manuale e grammatica del dialetto bolognese*, which is a grammar and lesson manual that introduces the Emilian dialect spoken in Bologna. 
+
+Current descriptions claim that there are three low vowel qualities in the language that are described as /æ/, /a/, and /ɑ/ [@canepariPronunciaGrafiaBolognese1995]. The central question is whether there is sufficient acoustic evidence for these three vowels or if there is evidence for a subset of these vowels. Another issue is that there is some debate about whether /æ/ is [æ] or [ɛ]. In @SonDalBulgnais this vowel is descibed as the short version of [ɛː].
+
+The reason for this is that descriptively these vowels are described as having nonoverlapping environments and generally lack minimal pairs. For example, /æ/ is claimed to only exist before velar nasals and in a few other functional words like demonstratives [see @canepariPronunciaGrafiaBolognese1995; @vitaliDscdegarretBulgnaisManuale2009 for a more detail discussion] and doesn't have minimal pairs with the other two phones. All of this makes phonologists' spider sense tingle that we are dealing with allophones rather than phonemes. 
+
+I will use several tools to explore whether or not this is the case. The two most commonly used tools are Bhattacharrya's Coeffecient/Affinity [BA; @bhattacharyyaMeasureDivergenceTwo1943] and the Pillai-Bartlett trace [Pillai; @pillaiNewTestCriteria1955]. These both have been used quite extensively to invesatigate vowel mergers in sociolinguistic, applied linguistic, and fieldwork research [@hayFactorsInfluencingSpeech2006;@nyczBestPracticesMeasuring2014;@johnsonQuantifyingOverlapBhattacharyyas2015;
+@amengualEffectsLanguageDominance2016;
+@kelleyComparisonFourVowel2020;
+@mulikVowelSystemSantiago2021;@stanleySampleSizeMatters2023;
+@smithModelledMultivariateOverlap2024;@bernardiBhattacharyyasAffinityVs2025]. 
+
+Now the question is: what do these measures actually do? One of the major problems is that a lot of researchers claim that they both show evidence that the vowels are overlapping [e.g., @nyczBestPracticesMeasuring2014 and Pillai-Bartlett ]. This is not actually true because Pillai-Bartlett Traces are the output of a MANOVA statistic and, like ANOVAs, explains whether or not the variance in the distributions are similar [@pillaiNewTestCriteria1955;@hardleAppliedMultivariateStatistical2024].[^1] The Pillai-Bartlett trace is only explaining is whether the two distributions are _similar_ to each other and **does not** actually explain overlap of the distributions.
+
+On the otherhand, BA actually does explain the amount of overlap between the distributions [@bhattacharyyaMeasureDivergenceTwo1943]. This has been used quite extensively in ecological research to model the home ranges of various animals [@fiebergQuantifyingHomerangeOverlap2005;@seamanEffectsSampleSize1999]. It wasn't unitl @johnsonQuantifyingOverlapBhattacharyyas2015 that the linguistic world was introduced to BAs for vowel overlap. 
+
+One thing that is nice about these two measures is that they both are typically bound on one end by 0 and 1 on the other.[^2] For BA, the closer the value is to 1 the higher the overlap. For Pillai, the closer it is to 0 the higher the similarity. 
+
+Using these two measures should help explain the differences or lack thereof between between these three vowels. 
+
+## Data description and exploration
+
+In keeping with good scientific practices, we first need to do an exploratory analysis before we make our hypotheses. We can do this by looking at the overall shape and distributions of the raw data before and after we clean it. 
+
+### Data Description
+
+```{r}
+#| label: load_data
+#| message: false
+
+bolognese <- readr::read_csv(
+  here::here(
+    "data",
+    "raw",
+    "20260904_master_cleaned.csv"
+  ), 
+  na = c("", NA),
+  col_types = list(
+    phoneme = "c",
+    stress = "l",
+    word = "f",
+    time = "n",
+    duration = "n",
+    nextSeg = "f",
+    F1 = "n",
+    F2 = "n",
+    F3 = "n",
+    F4 = "n",
+    speaker = "f", 
+    lesson = "f"
+  )
+) |> 
+  dplyr::mutate(
+    environment = dplyr::case_when(
+      nextSeg %in% c("ʎ", "l", "lː") ~ "prelateral", 
+      nextSeg %in% c("m", "mː", "n", "nː", "ɲ", "ɲː", "ŋ", "ŋː") ~ "prenasal",
+      nextSeg %in% c("rː", "r") ~ "prerhotic",
+      TRUE ~ "elsewhere"
+    )
+  )
+```
+
+Data comes from the audio accompanying the lessons found in @vitaliDscdegarretBulgnaisManuale2009. Each lesson's audio file was transcribed, segmented, and annotated with which vowels were stressed and who the speaker was. Praat was used to calculate the duration of the segment and the first four resonant frequencies and was used to create a CSV file containing the phoneme, stress, word, where in the audio file it was located, and what the next segment was.
+
+I then created a new variable indicating the phonological environment that the segments were found in: (i) `prelateral` if the segment occured before one of the laterals; (ii) `prenasal` if the segment occured before any nasal consonant; (iii) `prerhotic` if the next segment was a rhotic; (iv) `elsewhere` for everything else. These levels were selected because it is well known that laterals, nasals, and rhotics can greatly influence the vowels next to them via a phenomenon known as coarticulation. 
+
+This gives us a dataframe with the following variables. 
+
+```{r}
+#| echo: false
+#| label: tab_variables
+#| tbl-cap: Description of the variables in the dataset
+
+data_dictionary <- tibble::tibble(
+  variable = names(bolognese), 
+  type = purrr::map_chr(bolognese, ~class(.x)[1])
+) |> 
+  dplyr::mutate(
+    description = c(
+      "The phoneme", 
+      "The syllable stress the segment is located in",
+      "The word that the phoneme was found in",
+      "THe time in seconds where the phoneme begins",
+      "The duration of the phoneme",
+      "The next segment in the word is",
+      "The first resonant frequency in Hz",
+      "The second resonant frequency in Hz",
+      "The third resonant frequency in Hz",
+      "The fourth resonant frequency in Hz",
+      "The speakers initials",
+      "The lesson number",
+      "The phonological enivornment of the phoneme"
+    )
+  )
+
+data_dictionary |> 
+  knitr::kable(
+    col.names = c("Variable", "Type", "Description")
+  )
+```
+
+Now lets take a look at the distribution of vowels. Now we aren't going to be looking at all of the vowels because we are primarily interested in stressed monophthong vowels.
+
+```{r}
+#| label: vowel_splitting
+
+mono <- c(
+        "i",
+        "iː",
+        "ɛː",
+        "e",
+        "eː",
+        "u",
+        "uː",
+        "ɔː",
+        "o",
+        "oː",
+        "ɑ",
+        "a",
+        "aː",
+        "æ"
+      )
+
+long <- c(
+        "iː",
+        "ɛː",
+        "eː",
+        "uː",
+        "ɔː",
+        "oː",
+        "aː"
+      )
+
+vwls_stress <- bolognese |> 
+  dplyr::filter(
+    stress == TRUE,
+    phoneme %in% mono
+  ) |> 
+  dplyr::mutate(
+    vowel_length = dplyr::case_when(
+      phoneme %in% long ~ "long",
+      TRUE ~ "short"
+    ),
+    vowel_quality = dplyr::case_when(
+      phoneme %in% c("i", "iː") ~ "i",
+      phoneme %in% c("a", "aː") ~ "a",
+      phoneme %in% c("e", "eː") ~ "e",
+      phoneme %in% c("o", "oː") ~ "o",
+      phoneme %in% c("u", "uː") ~ "u",
+      TRUE ~ phoneme
+    )
+  )
+
+vowel_count <- table(vwls_stress$phoneme)
+
+vowel_environment <- table(vwls_stress$phoneme, vwls_stress$environment)
+
+vowel_speaker <- table(vwls_stress$phoneme, vwls_stress$speaker)
+```
+
+::: {.panel-tabset}
+## Stressed Vowels from dataset
+```{r}
+#| echo: false
+vowel_count |> 
+  knitr::kable(
+    col.names = c("Phoneme", "Freq")
+  )
+```
+
+## Stressed Vowels by environment
+```{r}
+#| echo: false
+vowel_environment |> 
+  knitr::kable(
+    col.names = c("Phoneme", "Elsewhere", "Prelateral", "Prenasal", "Prerhotic")
+  )
+```
+
+## Stressed Vowels by speaker
+```{r}
+#| echo: false
+vowel_speaker |> 
+  knitr::kable(
+    col.names = c("Phoneme", "LL", "RM")
+  )
+```
+:::
+
+From here it is good practice to remove outliers from the dataset. I find taking 95% of the data based on the mahalnobis distance really effective and luckily there is a handy way to do this using the `joeyr` package, which uses tidy syntax to calculate the mahalanobis distance and then to slowly delete rows until 95% of the data remains for the group variables. In this case, we will group by phoneme, speaker, and environment and keep 95% of those groups. 
+
+```{r}
+
+vwls_clean <- vwls_stress |> 
+  dplyr::mutate(
+    is_outlier = joeyr::find_outliers(F1, F2, keep = 0.95),
+    .by = c("phoneme", "speaker", "environment")
+  ) |> 
+  dplyr::filter(
+    !is_outlier
+  )
+```
+
+By doing this we only lost `{r} nrow(vwls_stress)-nrow(vwls_clean)` vowels from the original `{r} nrow(vwls_stress)`.
 
 ### Vowel Plots
 
-### Similarity and Overlap analysis
+The next thing we need to do is normalize the vowels. There are a lot of different ways that we can do this but my favorite has to be the ∆F method described in @johnsonDFMethodVocal2020. This calculates a measure called $\Delta F$ which is the average formant difference and then divides the formant by this measure. This essentialy normalizes the formants by assuming everyone has the same vocal tract length. 
 
-### References
+<!-- $$
+\Delta F = \frac{1}{mn}\sum_{j}^{m}\sum_{i}^{n}\left[ \frac{F_{ij}}{i - 0.5} \right] 
+$$ -->
+
+Once we have these new values we are ready to begin plotting. Luckily there is a very handy package called `tidynorm` which can do this for us.
+
+```{r}
+#| message: false
+vwls_norm <- vwls_clean |> 
+  tidynorm::norm_deltaF(
+    F1:F4, 
+    .by = speaker
+  )
+```
+We are going to plot several different vowel plots. One based on vowel length, one by speaker, and one for each environment.
+
+
+::: {.panel-tabset}
+
+## Vowel length
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| label: fig_vowelplot-length
+
+
+vwls_norm |>
+  ggplot2::ggplot(aes(
+    x = F2_df,
+    y = F1_df,
+    color = vowel_quality
+  )) +
+  ggplot2::geom_point(alpha = 0.2) +
+  ggplot2::stat_ellipse(
+    level = 0.67,
+    linewidth = 1
+  ) +
+  ggplot2::scale_x_reverse(position = "top") +
+  ggplot2::scale_y_reverse(position = "right") +
+  ggokabeito::scale_colour_okabe_ito() +
+  ggplot2::facet_wrap(. ~ vowel_length) + 
+  ggplot2::labs(
+    title = "∆F Normalized Vowels ",
+    x = "F2 (∆F)",
+    y = "F1 (∆F)"
+  ) +
+  ggplot2::theme_bw()
+```
+
+## Vowels by speaker
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| label: fig_vowelplot-speaker
+
+vwls_norm |>
+  ggplot2::ggplot(aes(
+    x = F2_df,
+    y = F1_df,
+    color = vowel_quality
+  )) +
+  ggplot2::geom_point(alpha = 0.2) +
+  ggplot2::stat_ellipse(
+    level = 0.67,
+    linewidth = 1
+  ) +
+  ggplot2::scale_x_reverse(position = "top") +
+  ggplot2::scale_y_reverse(position = "right") +
+  ggokabeito::scale_colour_okabe_ito() +
+  ggplot2::facet_wrap(. ~ speaker) + 
+  ggplot2::labs(
+    title = "∆F Normalized Vowels ",
+    x = "F2 (∆F)",
+    y = "F1 (∆F)"
+  ) +
+  ggplot2::theme_bw()
+```
+
+## Vowels in prelateral
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| label: fig_vowelplot-prelateral
+
+vwls_norm |>
+  dplyr::filter(
+    environment == "prelateral"
+  ) |> 
+  ggplot2::ggplot(aes(
+    x = F2_df,
+    y = F1_df,
+    color = vowel_quality
+  )) +
+  ggplot2::geom_point(alpha = 0.2) +
+  ggplot2::stat_ellipse(
+    level = 0.67,
+    linewidth = 1
+  ) +
+  ggplot2::scale_x_reverse(position = "top") +
+  ggplot2::scale_y_reverse(position = "right") +
+  ggokabeito::scale_colour_okabe_ito() +
+  ggplot2::facet_wrap(. ~ vowel_length) + 
+  ggplot2::labs(
+    title = "Prelateral Vowels (∆F Normalized)",
+    x = "F2 (∆F)",
+    y = "F1 (∆F)"
+  ) +
+  ggplot2::theme_bw()
+```
+
+## Vowels in prenasal
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| label: fig_vowelplot-prenasal
+
+
+vwls_norm |>
+  dplyr::filter(
+    environment == "prenasal"
+  ) |> 
+  ggplot2::ggplot(aes(
+    x = F2_df,
+    y = F1_df,
+    color = vowel_quality
+  )) +
+  ggplot2::geom_point(alpha = 0.2) +
+  ggplot2::stat_ellipse(
+    level = 0.67,
+    linewidth = 1
+  ) +
+  ggplot2::scale_x_reverse(position = "top") +
+  ggplot2::scale_y_reverse(position = "right") +
+  ggokabeito::scale_colour_okabe_ito() +
+  ggplot2::facet_wrap(. ~ vowel_length) + 
+  ggplot2::labs(
+    title = "Prenasal Vowels (∆F Normalized)",
+    x = "F2 (∆F)",
+    y = "F1 (∆F)"
+  ) +
+  ggplot2::theme_bw()
+```
+
+## Vowels in prerhotic
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| label: fig_vowelplot-prerhotic
+
+vwls_norm |>
+  dplyr::filter(
+    environment == "prerhotic"
+  ) |> 
+  ggplot2::ggplot(aes(
+    x = F2_df,
+    y = F1_df,
+    color = vowel_quality
+  )) +
+  ggplot2::geom_point(alpha = 0.2) +
+  ggplot2::stat_ellipse(
+    level = 0.67,
+    linewidth = 1
+  ) +
+  ggplot2::scale_x_reverse(position = "top") +
+  ggplot2::scale_y_reverse(position = "right") +
+  ggokabeito::scale_colour_okabe_ito() +
+  ggplot2::facet_wrap(. ~ vowel_length) + 
+  ggplot2::labs(
+    title = "Prerhotic Vowels (∆F Normalized)",
+    x = "F2 (∆F)",
+    y = "F1 (∆F)"
+  ) +
+  ggplot2::theme_bw()
+```
+
+## Elsewhere Vowels
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| label: fig_vowelplot-elsewhere
+
+vwls_norm |>
+  dplyr::filter(
+    environment == "elsewhere"
+  ) |> 
+  ggplot2::ggplot(aes(
+    x = F2_df,
+    y = F1_df,
+    color = vowel_quality
+  )) +
+  ggplot2::geom_point(alpha = 0.2) +
+  ggplot2::stat_ellipse(
+    level = 0.67,
+    linewidth = 1
+  ) +
+  ggplot2::scale_x_reverse(position = "top") +
+  ggplot2::scale_y_reverse(position = "right") +
+  ggokabeito::scale_colour_okabe_ito() +
+  ggplot2::facet_wrap(. ~ vowel_length) + 
+  ggplot2::labs(
+    title = "Elsewhere Vowels (∆F Normalized)",
+    x = "F2 (∆F)",
+    y = "F1 (∆F)"
+  ) +
+  ggplot2::theme_bw()
+```
+
+:::
+
+
+
+
+## Similarity and Overlap analysis
+
+### Hypotheses
+
+
+
+### Calculating the Pillai Trace 
+
+
+
+### Calculating the Bhattacharrya's Affinity
+
+### Overall patterns
+
+## What did we learn?
+
+## References
 
 ::: {#refs}
 :::
+
+[^1]: Two fantastic resources going into all of this are @hastieElementsStatisticalLearning2009 and @jamesIntroductionStatisticalLearning2021. 
+
+[^2]: This is only true when we are doing pairwise comparisons. The upper bound of a Pillai is actually $k-1$, where $k$ is the number of groups that are being compared [@prabhakaranMANOVATestMultiple2026]. Since linguists are often doing pairwise comparisons this is effectively bound at 1, since $2-1=1$.
