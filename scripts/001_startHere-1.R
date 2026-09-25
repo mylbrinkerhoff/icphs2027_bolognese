@@ -49,7 +49,6 @@ library(purrr)
 library(forcats)
 library(reticulate)
 library(ggplot2) # for plotting
-library(geomtextpath)
 library(here) # for creating pathways relative to the top-level directory
 library(remotes) # allows accessing github
 library(joeyr) # needed for the find_outliers function
