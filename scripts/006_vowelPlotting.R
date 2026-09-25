@@ -201,7 +201,7 @@ vwls_norm |>
   ggplot2::theme_bw() +
   ggplot2::theme(legend.position = "bottom")
 
-ggsave(
+ggplot2::ggsave(
   here::here(
     "output",
     "figs",
@@ -353,7 +353,7 @@ vwls_norm |>
     legend.position = "bottom"
   ) -> icphs_plot
 
-ggsave(
+ggplot2::ggsave(
   here::here(
     "output",
     "figs",
@@ -398,7 +398,7 @@ vwls_norm |>
     legend.position = "bottom"
   )
 
-ggsave(
+ggplot2::ggsave(
   here::here(
     "output",
     "figs",
@@ -443,7 +443,7 @@ vwls_norm |>
     legend.position = "bottom"
   )
 
-ggsave(
+ggplot2::ggsave(
   here::here(
     "output",
     "figs",

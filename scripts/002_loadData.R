@@ -19,7 +19,7 @@ bolognese <- readr::read_csv(
     "data",
     "raw",
     "master.csv"
-  ), 
+  ),
   na = c("", NA),
   col_types = list(
     phoneme = "c",
@@ -32,13 +32,13 @@ bolognese <- readr::read_csv(
     F2 = "n",
     F3 = "n",
     F4 = "n",
-    speaker = "f", 
+    speaker = "f",
     lesson = "f"
   )
-) |> 
+) |>
   dplyr::mutate(
     environment = dplyr::case_when(
-      nextSeg %in% c("ʎ", "l", "lː") ~ "prelateral", 
+      nextSeg %in% c("ʎ", "l", "lː") ~ "prelateral",
       nextSeg %in% c("m", "mː", "n", "nː", "ɲ", "ɲː", "ŋ", "ŋː") ~ "prenasal",
       nextSeg %in% c("rː", "r") ~ "prerhotic",
       TRUE ~ "elsewhere"
@@ -46,4 +46,4 @@ bolognese <- readr::read_csv(
   )
 
 head(bolognese)
-glimpse(bolognese)
+dplyr::glimpse(bolognese)
