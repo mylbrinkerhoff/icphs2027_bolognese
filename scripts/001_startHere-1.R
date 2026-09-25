@@ -35,11 +35,11 @@
 # )
 # renv::install("yaml")
 
-remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
-remotes::install_github("joeystanley/joeysvowels") # vowel datasets
+# remotes::install_github("joeystanley/joeyr") # helper functions from joeystanley
+# remotes::install_github("joeystanley/joeysvowels") # vowel datasets
 
 ### restore R session and packages to versions found in the renv.lock file
-renv::restore()
+# renv::restore()
 
 ### Load helper packages
 library(dplyr) # for data manipulation, graphic, and data wrangling
