@@ -317,6 +317,11 @@ vwls_stress <- bolognese |>
     )
   )
 
+vwls_lateralless <- vwls_stress |> 
+  dplyr::filter(
+    environment != "Prelateral",
+  ) 
+
 vowel_count <- table(vwls_stress$phoneme)
 
 vowel_environment <- table(vwls_stress$phoneme, vwls_stress$environment)
@@ -638,6 +643,13 @@ In order to assess the three low vowels we need to split the data into subsets b
 #| label: data_subsetting
 
 ### vowels 
+low <- vwls_norm |> 
+  dplyr::filter(
+    phoneme %in% c("æ", "a", "ɑ"),
+    environment != "prelateral"
+  )
+
+
 frntlss <- vwls_norm |> 
   dplyr::filter(
     phoneme %in% c("a", "ɑ"),
